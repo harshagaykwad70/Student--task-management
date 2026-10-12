@@ -1,0 +1,238 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Student Task Manager</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f3f5fb;color:#202746}
+main{max-width:720px;margin:30px auto;padding:16px}
+header{background:#5146d8;color:white;padding:25px;border-radius:18px}
+h1{margin:0 0 8px}
+header p{margin:0}
+.stats{display:flex;gap:10px;margin:18px 0}
+.stat{flex:1;background:white;padding:15px;border-radius:12px;text-align:center}
+.stat strong{display:block;font-size:25px;margin-top:6px}
+form,.panel{background:white;padding:18px;border-radius:14px;margin-bottom:16px}
+input,select,button{padding:12px;border:1px solid #ddd;border-radius:8px;font-size:15px}
+input,select{width:100%;margin:5px 0 12px}
+button{cursor:pointer;background:#5146d8;color:white;border:0}
+form button{width:100%}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.filters button{flex:1}
+.filters button.active{background:#25234f}
+.task{background:white;border-radius:12px;padding:14px;margin:10px 0;display:flex;gap:10px;align-items:center}
+.task-info{flex:1;min-width:0;overflow-wrap:anywhere}
+.task-info small{display:block;color:#6c7087;margin-top:6px}
+.done .task-title{text-decoration:line-through;color:#888}
+.tag{font-size:12px;font-weight:bold}
+.high{color:#d23e52}.medium{color:#b17a00}.low{color:#27845b}
+.actions{display:flex;gap:6px;flex-wrap:wrap}
+.actions button{padding:9px;font-size:12px}
+.delete{background:#e84a5f}
+#progress{height:9px;background:#e4e5f0;border-radius:10px;overflow:hidden}
+#bar{height:100%;width:0;background:#5146d8;transition:width .2s}
+.note{color:#6c7087;font-size:13px}
+@media(max-width:420px){main{margin:10px auto;padding:10px}.stats{gap:6px}.stat{padding:10px 4px}.task{padding:10px}}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>Student Task Manager</h1>
+<p>Organize your day. Complete your goals.</p>
+</header>
+
+<section class="stats">
+<div class="stat">Total<strong id="total">0</strong></div>
+<div class="stat">Pending<strong id="pending">0</strong></div>
+<div class="stat">Completed<strong id="completed">0</strong></div>
+</section>
+
+<section class="panel">
+<h3>Add New Task</h3>
+<form id="taskForm">
+<label for="title">Task name</label>
+<input id="title" placeholder="e.g. Complete DS practical" required maxlength="100">
+<label for="priority">Priority</label>
+<select id="priority">
+<option>High</option><option selected>Medium</option><option>Low</option>
+</select>
+<label for="deadline">Deadline (optional)</label>
+<input id="deadline" type="date">
+<button type="submit">+ Add Task</button>
+</form>
+</section>
+
+<section class="panel">
+<h3>My Tasks</h3>
+<input id="search" placeholder="Search tasks..." aria-label="Search tasks">
+<div class="filters">
+<button class="active" data-filter="All">All</button>
+<button data-filter="Pending">Pending</button>
+<button data-filter="Completed">Completed</button>
+</div>
+<p id="summary" class="note">Completion: 0%</p>
+<div id="progress"><div id="bar"></div></div>
+<div id="taskList"></div>
+<p id="empty" class="note">No tasks yet. Add your first task!</p>
+</section>
+<p class="note">DS concepts: Array, Objects, Linear Search, Filtering and Sorting.</p>
+</main>
+
+<script>
+// ARRAY: stores task objects
+let tasks = [];
+try {
+  const saved = JSON.parse(localStorage.getItem("studentTasks") || "[]");
+  if (Array.isArray(saved)) tasks = saved.filter(
+    t => t && typeof t.id === "number" &&
+    typeof t.title === "string" &&
+    typeof t.done === "boolean" &&
+    ["High","Medium","Low"].includes(t.priority)
+  );
+} catch (e) {
+  tasks = [];
+}
+
+let currentFilter = "All";
+
+// SAVE: stores data in this browser
+function saveTasks() {
+  try {
+    localStorage.setItem("studentTasks", JSON.stringify(tasks));
+  } catch (e) {
+    alert("Could not save data in this browser.");
+  }
+}
+
+// LINEAR SEARCH: finds tasks matching the search text
+function linearSearch(list, query) {
+  const results = [];
+  for (let i = 0; i < list.length; i++) {
+    if (list[i].title.toLowerCase().includes(query.toLowerCase())) {
+      results.push(list[i]);
+    }
+  }
+  return results;
+}
+
+// SORTING: High before Medium before Low
+function sortTasks(list) {
+  const rank = {High: 3, Medium: 2, Low: 1};
+  return [...list].sort((a, b) =>
+    rank[b.priority] - rank[a.priority] ||
+    a.id - b.id
+  );
+}
+
+function render() {
+  const completed = tasks.filter(t => t.done).length;
+  const pending = tasks.length - completed;
+  const percent = tasks.length
+    ? Math.round(completed / tasks.length * 100) : 0;
+
+  document.getElementById("total").textContent = tasks.length;
+  document.getElementById("pending").textContent = pending;
+  document.getElementById("completed").textContent = completed;
+  document.getElementById("summary").textContent =
+    "Completion: " + percent + "%";
+  document.getElementById("bar").style.width = percent + "%";
+
+  // Apply linear search, then status filter, then priority sort
+  let shown = linearSearch(tasks, document.getElementById("search").value);
+  if (currentFilter === "Pending") shown = shown.filter(t => !t.done);
+  if (currentFilter === "Completed") shown = shown.filter(t => t.done);
+  shown = sortTasks(shown);
+
+  const list = document.getElementById("taskList");
+  list.replaceChildren();
+  document.getElementById("empty").hidden = shown.length > 0;
+
+  shown.forEach(task => {
+    const card = document.createElement("div");
+    card.className = "task" + (task.done ? " done" : "");
+
+    const info = document.createElement("div");
+    info.className = "task-info";
+
+    const title = document.createElement("strong");
+    title.className = "task-title";
+    title.textContent = task.title;
+
+    const details = document.createElement("small");
+    details.textContent = "Deadline: " + (task.deadline || "Not set") + " · ";
+
+    const tag = document.createElement("span");
+    tag.className = "tag " + task.priority.toLowerCase();
+    tag.textContent = task.priority + " priority";
+
+    details.appendChild(tag);
+    info.append(title, details);
+
+    const actions = document.createElement("div");
+    actions.className = "actions";
+
+    const toggle = document.createElement("button");
+    toggle.textContent = task.done ? "Undo" : "Done";
+    toggle.setAttribute("aria-label",
+      (task.done ? "Reopen " : "Complete ") + task.title);
+    toggle.onclick = () => {
+      task.done = !task.done;
+      saveTasks();
+      render();
+    };
+
+    const del = document.createElement("button");
+    del.textContent = "Delete";
+    del.className = "delete";
+    del.setAttribute("aria-label", "Delete " + task.title);
+    del.onclick = () => {
+      tasks = tasks.filter(t => t.id !== task.id);
+      saveTasks();
+      render();
+    };
+
+    actions.append(toggle, del);
+    card.append(info, actions);
+    list.appendChild(card);
+  });
+}
+
+document.getElementById("taskForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const title = document.getElementById("title").value.trim();
+  if (!title) return;
+
+  tasks.push({
+    id: Date.now() + Math.floor(Math.random() * 1000),
+    title: title,
+    priority: document.getElementById("priority").value,
+    deadline: document.getElementById("deadline").value,
+    done: false
+  });
+
+  saveTasks();
+  e.target.reset();
+  render();
+});
+
+document.getElementById("search").addEventListener("input", render);
+
+document.querySelectorAll("[data-filter]").forEach(button => {
+  button.addEventListener("click", () => {
+    currentFilter = button.dataset.filter;
+    document.querySelectorAll("[data-filter]").forEach(b =>
+      b.classList.toggle("active", b === button)
+    );
+    render();
+  });
+});
+
+render();
+</script>
+</body>
+  </html>
+  
